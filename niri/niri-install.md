@@ -318,6 +318,12 @@ sudo pacman -S --needed fish firefox chromium obsidian flatpak ark gwenview stea
 paru -S --needed flclash
 ```
 
+推荐使用 Nautilus 作为文件管理器：
+
+```sh
+sudo pacman -S --needed nautilus gvfs gvfs-mtp gvfs-afc file-roller sushi
+```
+
 说明：
 
 - `fish`：交互式 shell，确认需要后再切换默认 shell
@@ -327,6 +333,9 @@ paru -S --needed flclash
 - `ark`、`gwenview`：压缩包和图片查看
 - `steam`：需要 `multilib` 和对应 32 位显卡库
 - `flclash`：AUR/第三方包，按实际网络环境选择安装方式
+- `nautilus`：GNOME 文件管理器，和 GTK/Portal 环境兼容性较好
+- `gvfs`、`gvfs-mtp`、`gvfs-afc`：提供挂载、安卓 MTP 和 iPhone 访问支持
+- `file-roller`、`sushi`：提供压缩包处理和空格预览
 
 Flatpak 可选更换国内镜像：
 
