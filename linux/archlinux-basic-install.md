@@ -378,9 +378,11 @@ vim /etc/hosts
 示例内容：
 
 ```text
-127.0.0.1   localhost
-::1         localhost
-127.0.1.1   arch.localdomain arch
+# Static table lookup for hostnames.
+# See hosts(5) for details.
+127.0.0.1        localhost
+::1              localhost
+127.0.0.1        arch.localdomain arch
 ```
 
 设置时区：
