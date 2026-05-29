@@ -1,0 +1,501 @@
+# Arch Linux 基础安装整理
+
+本文整理自「archlinux 简明指南」的基础安装页面，目标是记录一套可复用的 Arch Linux 基础安装流程。本文侧重 UEFI 启动、Btrfs 文件系统、`@` 与 `@home` 子卷、GRUB 引导和基础网络配置。
+
+原文链接：https://arch.icekylin.online/guide/rookie/basic-install.html
+
+> 重要提醒：分区、格式化、挂载和引导安装都可能影响磁盘数据。操作前先确认目标磁盘和分区，涉及双系统时尤其不要误格式化 Windows 使用的 EFI 分区。
+
+## 0. 进入安装环境
+
+从 Arch Linux 安装介质启动，进入安装环境后开始执行命令。
+
+常用辅助命令：
+
+```sh
+clear
+rmmod pcspkr
+```
+
+如果要永久禁用蜂鸣器，可在安装完成后的系统中创建或编辑 `/etc/modprobe.d/blacklist.conf`：
+
+```conf
+blacklist pcspkr
+```
+
+## 1. 确认 UEFI 启动模式
+
+检查是否存在 EFI 变量：
+
+```sh
+ls /sys/firmware/efi/efivars
+```
+
+如果能列出内容，说明当前是 UEFI 模式。若没有输出或路径不存在，需要回到 BIOS/UEFI 设置中确认启动方式。
+
+## 2. 连接网络
+
+Arch Linux 安装过程需要联网。
+
+无线网络可使用 `iwctl`：
+
+```sh
+iwctl
+device list
+station wlan0 scan
+station wlan0 get-networks
+station wlan0 connect wifi-name
+exit
+```
+
+其中 `wlan0` 要替换成实际无线网卡名称，`wifi-name` 要替换成实际 SSID。
+
+如果无线网卡没有正常启用，可检查设备和软硬件开关：
+
+```sh
+lspci -k | grep Network
+rfkill list
+ip link set wlan0 up
+rfkill unblock wifi
+```
+
+有线网络通常插入可用网线后会通过 DHCP 自动联网。
+
+## 3. 测试网络
+
+```sh
+ping www.bilibili.com
+```
+
+能看到返回数据说明网络可用。`ping` 不会自动退出，需要按 `Ctrl+C` 停止。
+
+## 4. 同步系统时间
+
+```sh
+timedatectl set-ntp true
+timedatectl status
+```
+
+系统时间不准确可能导致证书校验、软件包下载等问题。
+
+## 5. 配置 pacman 镜像源
+
+编辑 `/etc/pacman.d/mirrorlist`：
+
+```sh
+vim /etc/pacman.d/mirrorlist
+```
+
+可将常用国内镜像放在文件顶部：
+
+```conf
+Server = https://mirrors.ustc.edu.cn/archlinux/$repo/os/$arch
+Server = https://mirrors.tuna.tsinghua.edu.cn/archlinux/$repo/os/$arch
+Server = https://repo.huaweicloud.com/archlinux/$repo/os/$arch
+Server = http://mirror.lzu.edu.cn/archlinux/$repo/os/$arch
+```
+
+此阶段不要添加 `archlinuxcn` 源，避免基础安装时引入额外变量。
+
+## 6. 分区规划
+
+示例方案适用于 UEFI + Btrfs：
+
+| 挂载点/用途 | 建议大小 | 说明 |
+| --- | --- | --- |
+| `/boot` | 约 256 MiB 或使用已有 EFI 分区 | 双系统时通常复用 Windows 创建的 EFI 分区 |
+| Swap | 内存的 60% 或与内存相同 | 为休眠预留空间时可适当增大 |
+| `/` | 128 GiB 以上 | Btrfs 分区中的 `@` 子卷 |
+| `/home` | 128 GiB 以上 | Btrfs 分区中的 `@home` 子卷 |
+
+Btrfs 下 `/` 和 `/home` 可以位于同一个物理分区，通过不同子卷区分。
+
+先查看磁盘和分区：
+
+```sh
+lsblk
+fdisk -l
+```
+
+使用 `cfdisk` 分区：
+
+```sh
+cfdisk /dev/sdx
+```
+
+NVMe 硬盘示例：
+
+```sh
+cfdisk /dev/nvme0n1
+```
+
+在 `cfdisk` 中通常需要创建：
+
+- 一个 Linux swap 分区
+- 一个 Linux filesystem 分区，用于 Btrfs
+- EFI 分区可复用已有分区；全新安装时才按需创建
+
+写入分区表后再次检查：
+
+```sh
+lsblk
+fdisk -l
+```
+
+## 7. 格式化与创建 Btrfs 子卷
+
+以下命令中的分区名必须替换为实际分区：
+
+- EFI 分区示例：`/dev/sda1` 或 `/dev/nvme0n1p1`
+- Swap 分区示例：`/dev/sda4` 或 `/dev/nvme0n1p5`
+- Btrfs 分区示例：`/dev/sda5` 或 `/dev/nvme0n1p6`
+
+### 7.1 EFI 分区
+
+全新安装且确认目标 EFI 分区可格式化时：
+
+```sh
+mkfs.fat -F32 /dev/sdXN
+```
+
+NVMe 示例：
+
+```sh
+mkfs.fat -F32 /dev/nvme0n1pN
+```
+
+双系统场景下，如果 EFI 分区已由 Windows 使用，通常不要格式化。
+
+### 7.2 Swap 分区
+
+```sh
+mkswap /dev/sdXN
+```
+
+NVMe 示例：
+
+```sh
+mkswap /dev/nvme0n1pN
+```
+
+### 7.3 Btrfs 分区
+
+```sh
+mkfs.btrfs -L myArch /dev/sdXN
+```
+
+NVMe 示例：
+
+```sh
+mkfs.btrfs -L myArch /dev/nvme0n1pN
+```
+
+临时挂载 Btrfs 分区：
+
+```sh
+mount -t btrfs -o compress=zstd /dev/sdXN /mnt
+df -h
+```
+
+创建子卷：
+
+```sh
+btrfs subvolume create /mnt/@
+btrfs subvolume create /mnt/@home
+btrfs subvolume list -p /mnt
+umount /mnt
+```
+
+`@` 和 `@home` 是常见布局，也方便后续使用 Timeshift 等快照工具。
+
+## 8. 挂载分区
+
+挂载顺序要从根目录开始。
+
+SATA/SCSI 磁盘示例：
+
+```sh
+mount -t btrfs -o subvol=/@,compress=zstd /dev/sdXN /mnt
+mkdir /mnt/home
+mount -t btrfs -o subvol=/@home,compress=zstd /dev/sdXN /mnt/home
+mkdir -p /mnt/boot
+mount /dev/sdYN /mnt/boot
+swapon /dev/sdZN
+```
+
+NVMe 磁盘示例：
+
+```sh
+mount -t btrfs -o subvol=/@,compress=zstd /dev/nvme0n1pN /mnt
+mkdir /mnt/home
+mount -t btrfs -o subvol=/@home,compress=zstd /dev/nvme0n1pN /mnt/home
+mkdir -p /mnt/boot
+mount /dev/nvme0n1pY /mnt/boot
+swapon /dev/nvme0n1pZ
+```
+
+检查挂载和 Swap：
+
+```sh
+df -h
+free -h
+```
+
+## 9. 安装基础系统
+
+安装基础包、内核、固件和 Btrfs 工具：
+
+```sh
+pacstrap /mnt base base-devel linux linux-firmware btrfs-progs
+```
+
+如果遇到 GPG 证书相关错误，可先更新安装环境中的 keyring：
+
+```sh
+pacman -S archlinux-keyring
+```
+
+安装基础工具：
+
+```sh
+pacstrap /mnt networkmanager vim sudo zsh zsh-completions
+```
+
+如果习惯使用 Bash，可把 `zsh zsh-completions` 换成 `bash-completion`。
+
+## 10. 生成 fstab
+
+```sh
+genfstab -U /mnt > /mnt/etc/fstab
+cat /mnt/etc/fstab
+```
+
+确认 `/`、`/home`、`/boot` 和 Swap 都已写入，且 UUID、文件系统类型、挂载选项符合预期。
+
+## 11. 进入新系统
+
+```sh
+arch-chroot /mnt
+```
+
+进入后，`/mnt` 中的新系统会成为当前命令行环境的 `/`。
+
+## 12. 设置主机名、hosts 与时区
+
+编辑主机名：
+
+```sh
+vim /etc/hostname
+```
+
+示例内容：
+
+```text
+myarch
+```
+
+编辑 hosts：
+
+```sh
+vim /etc/hosts
+```
+
+示例内容：
+
+```text
+127.0.0.1   localhost
+::1         localhost
+127.0.1.1   myarch.localdomain myarch
+```
+
+设置时区：
+
+```sh
+ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+```
+
+## 13. 同步硬件时间
+
+```sh
+hwclock --systohc
+```
+
+## 14. 设置 Locale
+
+编辑 `/etc/locale.gen`：
+
+```sh
+vim /etc/locale.gen
+```
+
+取消以下两行的注释：
+
+```text
+en_US.UTF-8 UTF-8
+zh_CN.UTF-8 UTF-8
+```
+
+生成 locale：
+
+```sh
+locale-gen
+```
+
+设置系统语言：
+
+```sh
+echo 'LANG=en_US.UTF-8' > /etc/locale.conf
+```
+
+不建议在这里设置中文 locale，否则 TTY 可能出现乱码。
+
+## 15. 设置 root 密码
+
+```sh
+passwd root
+```
+
+输入密码时终端不会显示字符，这是正常行为。
+
+## 16. 安装 CPU 微码
+
+Intel CPU：
+
+```sh
+pacman -S intel-ucode
+```
+
+AMD CPU：
+
+```sh
+pacman -S amd-ucode
+```
+
+只安装与当前 CPU 平台匹配的微码包即可。
+
+## 17. 安装 GRUB 引导
+
+安装 GRUB 相关包：
+
+```sh
+pacman -S grub efibootmgr os-prober
+```
+
+安装到 EFI 分区：
+
+```sh
+grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=ARCH
+```
+
+编辑 GRUB 默认配置：
+
+```sh
+vim /etc/default/grub
+```
+
+建议调整：
+
+```conf
+GRUB_CMDLINE_LINUX_DEFAULT="loglevel=5 nowatchdog"
+GRUB_DISABLE_OS_PROBER=false
+```
+
+说明：
+
+- 移除 `quiet`，便于启动时观察日志
+- 将 `loglevel` 调整为 `5`，方便排错
+- 加入 `nowatchdog`，可改善部分机器关机或重启速度
+- 双系统需要 `GRUB_DISABLE_OS_PROBER=false` 才能让 GRUB 检测其他系统
+
+如果 `nowatchdog` 对 Intel 看门狗无效，可考虑改用：
+
+```conf
+modprobe.blacklist=iTCO_wdt
+```
+
+生成 GRUB 配置：
+
+```sh
+grub-mkconfig -o /boot/grub/grub.cfg
+```
+
+如果主板无法显示自定义 UEFI 启动项，可在确认需要时使用 fallback 路径安装：
+
+```sh
+grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=ARCH --removable
+```
+
+正常机器不需要执行 `--removable` 版本。
+
+## 18. 完成安装并重启
+
+退出 chroot，卸载分区并重启：
+
+```sh
+exit
+umount -R /mnt
+reboot
+```
+
+实体机重启前拔掉安装 U 盘，避免再次进入安装环境。虚拟机可直接重启。
+
+## 19. 首次进入系统后的网络配置
+
+使用 root 登录后，启用 NetworkManager：
+
+```sh
+systemctl enable --now NetworkManager
+ping www.bilibili.com
+```
+
+无线网络可用 `nmcli`：
+
+```sh
+nmcli dev wifi list
+nmcli dev wifi connect "Wi-Fi名（SSID）" password "网络密码"
+```
+
+也可以使用交互式工具：
+
+```sh
+nmtui
+```
+
+## 20. 可选：安装 fastfetch
+
+```sh
+pacman -S fastfetch
+fastfetch
+```
+
+## 21. 关机命令
+
+```sh
+shutdown -h now
+```
+
+或：
+
+```sh
+poweroff
+```
+
+## 安装检查清单
+
+- [ ] 已确认从 UEFI 模式启动
+- [ ] 网络可用，`ping` 测试正常
+- [ ] 系统时间已同步
+- [ ] mirrorlist 已调整
+- [ ] 已确认目标磁盘和分区
+- [ ] EFI、Swap、Btrfs 分区处理正确
+- [ ] 已创建 `@` 和 `@home` Btrfs 子卷
+- [ ] `/`、`/home`、`/boot`、Swap 已正确挂载
+- [ ] `pacstrap` 基础系统和必要工具安装完成
+- [ ] `/etc/fstab` 已生成并检查
+- [ ] 主机名、hosts、时区、硬件时间已设置
+- [ ] locale 已生成，`LANG=en_US.UTF-8`
+- [ ] root 密码已设置
+- [ ] CPU 微码已安装
+- [ ] GRUB 已安装并生成配置
+- [ ] 重启后 NetworkManager 已启用
+
