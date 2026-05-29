@@ -117,10 +117,10 @@ lsblk
 fdisk -l
 ```
 
-使用 `cfdisk` 分区：
+SATA/SCSI 磁盘示例：
 
 ```sh
-cfdisk /dev/sdx
+cfdisk /dev/sda
 ```
 
 NVMe 硬盘示例：
@@ -129,11 +129,33 @@ NVMe 硬盘示例：
 cfdisk /dev/nvme0n1
 ```
 
+虚拟机 VirtIO 磁盘示例：
+
+```sh
+cfdisk /dev/vda
+```
+
 在 `cfdisk` 中通常需要创建：
 
-- 一个 Linux swap 分区
-- 一个 Linux filesystem 分区，用于 Btrfs
-- EFI 分区可复用已有分区；全新安装时才按需创建
+- 第 1 个分区：EFI system，用于挂载到 `/boot`
+- 第 2 个分区：Linux swap，用于 Swap
+- 第 3 个分区：Linux filesystem，用于 Btrfs 系统分区
+
+本文后续统一按下面的示例分区编号说明：
+
+| 磁盘类型 | EFI 分区 | Swap 分区 | Linux system 分区 |
+| --- | --- | --- | --- |
+| SATA/SCSI | `/dev/sda1` | `/dev/sda2` | `/dev/sda3` |
+| NVMe | `/dev/nvme0n1p1` | `/dev/nvme0n1p2` | `/dev/nvme0n1p3` |
+| VirtIO | `/dev/vda1` | `/dev/vda2` | `/dev/vda3` |
+
+三种命名方式是同样的分区逻辑，只是设备名称不同：
+
+- `/dev/sdaN` 常见于 SATA、SCSI、USB 磁盘
+- `/dev/nvme0n1pN` 常见于 NVMe 硬盘
+- `/dev/vdaN` 常见于 KVM/QEMU 等虚拟机的 VirtIO 磁盘
+
+双系统场景下，EFI 分区可复用已有分区；全新安装时才按需创建并格式化。
 
 写入分区表后再次检查：
 
@@ -144,56 +166,98 @@ fdisk -l
 
 ## 7. 格式化与创建 Btrfs 子卷
 
-以下命令中的分区名必须替换为实际分区：
+以下命令按第 6 节的示例分区编写：
 
-- EFI 分区示例：`/dev/sda1` 或 `/dev/nvme0n1p1`
-- Swap 分区示例：`/dev/sda4` 或 `/dev/nvme0n1p5`
-- Btrfs 分区示例：`/dev/sda5` 或 `/dev/nvme0n1p6`
+- EFI：`/dev/sda1`、`/dev/nvme0n1p1`、`/dev/vda1`
+- Swap：`/dev/sda2`、`/dev/nvme0n1p2`、`/dev/vda2`
+- Linux system：`/dev/sda3`、`/dev/nvme0n1p3`、`/dev/vda3`
+
+如果实际分区编号不同，必须先根据 `lsblk` 输出确认后再调整命令。
 
 ### 7.1 EFI 分区
 
 全新安装且确认目标 EFI 分区可格式化时：
 
+SATA/SCSI：
+
 ```sh
-mkfs.fat -F32 /dev/sdXN
+mkfs.fat -F32 /dev/sda1
 ```
 
-NVMe 示例：
+NVMe：
 
 ```sh
-mkfs.fat -F32 /dev/nvme0n1pN
+mkfs.fat -F32 /dev/nvme0n1p1
+```
+
+VirtIO：
+
+```sh
+mkfs.fat -F32 /dev/vda1
 ```
 
 双系统场景下，如果 EFI 分区已由 Windows 使用，通常不要格式化。
 
 ### 7.2 Swap 分区
 
+SATA/SCSI：
+
 ```sh
-mkswap /dev/sdXN
+mkswap /dev/sda2
 ```
 
-NVMe 示例：
+NVMe：
 
 ```sh
-mkswap /dev/nvme0n1pN
+mkswap /dev/nvme0n1p2
+```
+
+VirtIO：
+
+```sh
+mkswap /dev/vda2
 ```
 
 ### 7.3 Btrfs 分区
 
+SATA/SCSI：
+
 ```sh
-mkfs.btrfs -L myArch /dev/sdXN
+mkfs.btrfs -L myArch /dev/sda3
 ```
 
-NVMe 示例：
+NVMe：
 
 ```sh
-mkfs.btrfs -L myArch /dev/nvme0n1pN
+mkfs.btrfs -L myArch /dev/nvme0n1p3
+```
+
+VirtIO：
+
+```sh
+mkfs.btrfs -L myArch /dev/vda3
 ```
 
 临时挂载 Btrfs 分区：
 
+SATA/SCSI：
+
 ```sh
-mount -t btrfs -o compress=zstd /dev/sdXN /mnt
+mount -t btrfs -o compress=zstd /dev/sda3 /mnt
+df -h
+```
+
+NVMe：
+
+```sh
+mount -t btrfs -o compress=zstd /dev/nvme0n1p3 /mnt
+df -h
+```
+
+VirtIO：
+
+```sh
+mount -t btrfs -o compress=zstd /dev/vda3 /mnt
 df -h
 ```
 
@@ -215,23 +279,34 @@ umount /mnt
 SATA/SCSI 磁盘示例：
 
 ```sh
-mount -t btrfs -o subvol=/@,compress=zstd /dev/sdXN /mnt
+mount -t btrfs -o subvol=/@,compress=zstd /dev/sda3 /mnt
 mkdir /mnt/home
-mount -t btrfs -o subvol=/@home,compress=zstd /dev/sdXN /mnt/home
+mount -t btrfs -o subvol=/@home,compress=zstd /dev/sda3 /mnt/home
 mkdir -p /mnt/boot
-mount /dev/sdYN /mnt/boot
-swapon /dev/sdZN
+mount /dev/sda1 /mnt/boot
+swapon /dev/sda2
 ```
 
 NVMe 磁盘示例：
 
 ```sh
-mount -t btrfs -o subvol=/@,compress=zstd /dev/nvme0n1pN /mnt
+mount -t btrfs -o subvol=/@,compress=zstd /dev/nvme0n1p3 /mnt
 mkdir /mnt/home
-mount -t btrfs -o subvol=/@home,compress=zstd /dev/nvme0n1pN /mnt/home
+mount -t btrfs -o subvol=/@home,compress=zstd /dev/nvme0n1p3 /mnt/home
 mkdir -p /mnt/boot
-mount /dev/nvme0n1pY /mnt/boot
-swapon /dev/nvme0n1pZ
+mount /dev/nvme0n1p1 /mnt/boot
+swapon /dev/nvme0n1p2
+```
+
+VirtIO 磁盘示例：
+
+```sh
+mount -t btrfs -o subvol=/@,compress=zstd /dev/vda3 /mnt
+mkdir /mnt/home
+mount -t btrfs -o subvol=/@home,compress=zstd /dev/vda3 /mnt/home
+mkdir -p /mnt/boot
+mount /dev/vda1 /mnt/boot
+swapon /dev/vda2
 ```
 
 检查挂载和 Swap：
@@ -291,7 +366,7 @@ vim /etc/hostname
 示例内容：
 
 ```text
-myarch
+arch
 ```
 
 编辑 hosts：
@@ -305,7 +380,7 @@ vim /etc/hosts
 ```text
 127.0.0.1   localhost
 ::1         localhost
-127.0.1.1   myarch.localdomain myarch
+127.0.1.1   arch.localdomain arch
 ```
 
 设置时区：
@@ -413,7 +488,7 @@ GRUB_DISABLE_OS_PROBER=false
 modprobe.blacklist=iTCO_wdt
 ```
 
-生成 GRUB 配置：
+==生成 GRUB 配置==：
 
 ```sh
 grub-mkconfig -o /boot/grub/grub.cfg
@@ -498,4 +573,3 @@ poweroff
 - [ ] CPU 微码已安装
 - [ ] GRUB 已安装并生成配置
 - [ ] 重启后 NetworkManager 已启用
-
