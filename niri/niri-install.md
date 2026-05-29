@@ -45,6 +45,19 @@ sudo pacman -S --needed \
   ttf-jetbrains-mono-nerd
 ```
 
+可选安装 Maple Mono 字体：
+
+```sh
+# Maple Mono (Ligature TTF unhinted)
+paru -S --needed ttf-maplemono
+
+# Maple Mono NF (Ligature unhinted)
+paru -S --needed ttf-maplemono-nf-unhinted
+
+# Maple Mono NF CN (Ligature unhinted)
+paru -S --needed ttf-maplemono-nf-cn-unhinted
+```
+
 生成用户目录：
 
 ```sh
