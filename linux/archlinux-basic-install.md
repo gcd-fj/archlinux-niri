@@ -538,14 +538,151 @@ nmcli dev wifi connect "Wi-Fi名（SSID）" password "网络密码"
 nmtui
 ```
 
-## 20. 可选：安装 fastfetch
+## 20. 更新系统
+
+如果基础安装完成后间隔了一段时间，或者刚进入新系统准备继续配置，先更新整个系统：
+
+```sh
+pacman -Syu
+```
+
+如果更新了内核、systemd、显卡相关包或关键基础包，建议重启后再继续后续配置。
+
+## 21. 配置 root 默认编辑器
+
+Arch Linux 的部分终端工具默认可能调用 `vi`。如果习惯使用 `vim`，可以给 root 设置默认编辑器。
+
+编辑 root 的登录配置：
+
+```sh
+vim ~/.bash_profile
+```
+
+加入：
+
+```sh
+export EDITOR='vim'
+```
+
+保存后重新登录 root，或手动执行：
+
+```sh
+source ~/.bash_profile
+```
+
+也可以在需要指定编辑器的命令前临时写环境变量，例如后面的 `visudo`。
+
+## 22. 创建普通用户并配置 sudo
+
+日常使用不建议长期登录 root。创建普通用户，并加入 `wheel` 组以便后续通过 `sudo` 临时提权。
+
+以下示例用户名为 `myusername`，实际使用时替换成自己的用户名：
+
+```sh
+useradd -m -G wheel -s /bin/bash myusername
+passwd myusername
+```
+
+参数说明：
+
+- `-m`：创建用户时同时创建家目录
+- `-G wheel`：把用户加入 `wheel` 附加组
+- `-s /bin/bash`：指定默认 shell 为 Bash
+
+如果前面安装系统时选择了 Zsh，也可以改为：
+
+```sh
+useradd -m -G wheel -s /bin/zsh myusername
+passwd myusername
+```
+
+使用 `visudo` 编辑 sudoers：
+
+```sh
+EDITOR=vim visudo
+```
+
+找到下面这一行：
+
+```sudoers
+# %wheel ALL=(ALL:ALL) ALL
+```
+
+取消注释，改为：
+
+```sudoers
+%wheel ALL=(ALL:ALL) ALL
+```
+
+保存退出后，`wheel` 组用户即可使用 `sudo`。建议切换到新用户验证：
+
+```sh
+su - myusername
+sudo pacman -Syu
+```
+
+## 23. 开启 multilib 与 archlinuxcn 源
+
+`multilib` 用于启用 32 位库支持，一些游戏、Wine 或闭源软件会用到。`archlinuxcn` 是 Arch Linux 中文社区仓库，可按需添加。
+
+编辑 pacman 配置：
+
+```sh
+sudo vim /etc/pacman.conf
+```
+
+找到 `[multilib]` 段，取消这两行的注释：
+
+```conf
+[multilib]
+Include = /etc/pacman.d/mirrorlist
+```
+
+如果需要添加 `archlinuxcn`，在文件末尾加入一个镜像源即可。下面列出几个常用镜像，实际保留其中一个或多个都可以：
+
+```conf
+[archlinuxcn]
+Server = https://mirrors.ustc.edu.cn/archlinuxcn/$arch
+Server = https://mirrors.tuna.tsinghua.edu.cn/archlinuxcn/$arch
+Server = https://mirrors.hit.edu.cn/archlinuxcn/$arch
+Server = https://repo.huaweicloud.com/archlinuxcn/$arch
+```
+
+刷新软件包数据库并更新：
+
+```sh
+sudo pacman -Syyu
+```
+
+安装 archlinuxcn keyring：
+
+```sh
+sudo pacman -S archlinuxcn-keyring
+```
+
+如果安装 `archlinuxcn-keyring` 时遇到 `farseerfc` key 信任不足的问题，可以先本地信任该 key：
+
+```sh
+sudo pacman-key --lsign-key "farseerfc@archlinux.org"
+sudo pacman -S archlinuxcn-keyring
+```
+
+需要安装 AUR 助手时，可在 archlinuxcn 源可用后安装 `yay`：
+
+```sh
+sudo pacman -S yay
+```
+
+到这里为止，系统已经完成进入桌面环境前的基础用户、sudo、软件源和更新配置。后续可以继续选择安装 KDE Plasma、GNOME、niri 或其他桌面/窗口管理器。
+
+## 24. 可选：安装 fastfetch
 
 ```sh
 pacman -S fastfetch
 fastfetch
 ```
 
-## 21. 关机命令
+## 25. 关机命令
 
 ```sh
 shutdown -h now
@@ -575,3 +712,7 @@ poweroff
 - [ ] CPU 微码已安装
 - [ ] GRUB 已安装并生成配置
 - [ ] 重启后 NetworkManager 已启用
+- [ ] 系统已通过 `pacman -Syu` 更新
+- [ ] 已创建普通用户并加入 `wheel` 组
+- [ ] `wheel` 组 sudo 权限已启用
+- [ ] 已按需开启 `multilib` 和 `archlinuxcn`

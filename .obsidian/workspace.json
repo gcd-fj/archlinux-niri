@@ -14,12 +14,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "README.md",
+                "file": "niri/niri-install.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "README"
+              "title": "niri-install"
             },
             "group": "9eec0d312a52efd1"
           }
@@ -36,13 +36,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "README.md",
+                "file": "niri/niri-install.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "README 的大纲"
+              "title": "niri-install 的大纲"
             },
             "group": "9eec0d312a52efd1"
           }
@@ -208,6 +208,7 @@
   "active": "c2b82ea016429d3e",
   "lastOpenFiles": [
     "linux/archlinux-basic-install.md",
+    "niri/niri-install.md",
     "README.md",
     "obsidian/常用插件分享.md",
     "linux",
